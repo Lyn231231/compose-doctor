@@ -1,0 +1,17 @@
+services:
+  web:
+    image: nginx          # W102 unpinned
+    ports:
+      - "8080:80"         # I201 all interfaces, W104 no healthcheck
+    volumes:
+      - ./site:/usr/share/nginx/html
+  db:
+    image: postgres:16
+    ports:
+      - "5432:5432"       # I201
+      - "8080:8080"       # E003 duplicate host port
+    environment:
+      - POSTGRES_PASSWORD  # W106 pass-through, unset = empty
+    restart: unless-stopped
+volumes:
+  pgdata: {}              # W101 declared, never mounted
