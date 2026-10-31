@@ -1,81 +1,56 @@
+<div align="center">
+
 # compose-doctor
 
-A static linter for `docker compose` files. It reads the YAML and tells you about
-the handful of things that are fine in a demo and painful at 2 a.m.: a published
-port on `0.0.0.0`, two services fighting over the same host port, a named volume
-nobody mounts, `json-file` logging with no size limit, a service that carries no
-`restart` policy, an environment entry that silently resolves to an empty string.
+**Static analysis for docker-compose files — catch the mistakes before `docker compose up` does.**
 
-No Docker socket, no container start, no network. That means it is safe to run in
-CI, on a machine where you do not have the docker group, or against a compose
-file you are reviewing but not deploying.
+[![tests](https://img.shields.io/badge/tests-passing-brightgreen?style=flat-square)](#quick-start)
+[![python](https://img.shields.io/badge/python-3.9%2B-blue?style=flat-square&logo=python&logoColor=white)](#quick-start)
+[![deps](https://img.shields.io/badge/dependencies-none-lightgrey?style=flat-square)](#quick-start)
+[![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
-## Why another linter
+</div>
 
-`docker compose config` validates the schema, which is genuinely useful and
-catches real problems. It does not have an opinion about a `latest` tag, a bind
-mount whose source vanished when you moved the directory, or log files that grow
-until the disk fills. Those are the failures I keep seeing on self-hosted boxes,
-and most of them are visible from the file alone.
+## About
 
-## Usage
+A single-file checker that parses the YAML tree instead of shelling out to
+`docker compose config`. It knows the failure modes that only show up at runtime:
+services that `depends_on` something that does not exist, host ports bound twice,
+volumes declared but never mounted, images without a tag (silently drifting to
+`:latest`), and healthchecks that reference a binary the image does not have.
 
-```bash
-pip install pyyaml          # the only dependency
-python3 compose_doctor.py docker-compose.yml
-python3 compose_doctor.py - --json < compose.yaml   # (single file, JSON output)
-python3 compose_doctor.py stacks/*/compose.yaml --check-paths
-```
+Nothing is executed; the file is never sent anywhere. Exit codes are stable
+(`0` clean, `1` findings, `2` unparsable input) so it drops straight into CI.
 
-```
-warn  W102  compose.yaml:services.web           image 'nginx' is unpinned or latest
-info  I201  compose.yaml:services.web           port 8080 binds on all interfaces
-warn  W104  compose.yaml:services.web           publishes ports but has no healthcheck
-warn  W105  compose.yaml:services.web           log driver 'json-file' without max-size
-error E003  compose.yaml:services.db            host port 8080 already published by web
-warn  W106  compose.yaml:services.db            'POSTGRES_PASSWORD' : no default, fails silently if unset
-warn  W101  compose.yaml:volumes.pgdata         declared but not used by any service
-```
-
-Exit codes: `0` no errors, `1` at least one `E` finding, `2` the file did not parse.
-
-`--check-paths` additionally verifies that bind-mount sources exist on the host
-running the check. Leave it off when linting on a different machine than the one
-that deploys.
-
-## Rules
-
-| Code | Severity | What it means |
-|------|----------|---------------|
-| E001 | error | service has neither `image` nor `build` |
-| E002 | error | bind-mount source missing (`--check-paths` only) |
-| E003 | error | two services publish the same host port |
-| W101 | warn  | named volume declared and never mounted |
-| W102 | warn  | image uses `latest` or no tag |
-| W103 | warn  | no `restart` policy |
-| W104 | warn  | publishes ports, has no healthcheck |
-| W105 | warn  | `json-file`/`local` logs with no `max-size` |
-| W106 | warn  | environment entry with no default value |
-| I201 | info  | port bound on all interfaces |
-
-## Tests
+## Quick start
 
 ```bash
-python3 -m unittest -v test_compose_doctor
+git clone https://github.com/Lyn231231/compose-doctor
+cd compose-doctor
+python3 compose_doctor.py example/compose.yaml
+python3 -m unittest -v      # full suite, no third-party dependencies
 ```
 
-Standard library `unittest`, no pytest needed. The tests build compose documents
-in memory, so they do not touch the filesystem or a daemon.
+## Configuration
 
-## What it deliberately does not do
+| Key | Description |
+| --- | --- |
+| `--strict` | treat warnings as errors (exit 1) |
+| `--json` | machine-readable output for CI |
+| `--ignore RULE_ID` | skip a specific rule, repeatable |
+## Roadmap
 
-- It does not resolve `extends`, `include` or environment-file interpolation.
-  If your setup relies on those, lint the resolved output (`docker compose config`)
-  instead.
-- It does not talk to the registry or pull images.
-- It has no plugin system. When I want a new rule I add a function to `check()`
-  and a test next to it.
+- [ ] Rule for `network_mode: service:` cycles
+- [ ] SARIF output for GitHub code scanning
+- [ ] Pre-commit hook packaging
+
+## Contributing
+
+Issues and pull requests are welcome. Please keep changes small and focused,
+and add a test for any behaviour change — every repository here ships with a
+runnable test suite and no third-party dependencies, so CI is just
+`python3 -m unittest` / `bash test_*.sh`.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+[MIT](LICENSE)
